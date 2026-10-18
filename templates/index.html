@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Myanmar Checkers AI</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --panel: #ffffff;
+    --text: #1f1d1a;
+    --muted: #6b665e;
+    --border: #ddd6c8;
+    --accent: #2f6f4f;
+    --accent-text: #ffffff;
+    --sq-light: #f0dcb4;
+    --sq-dark: #9a6a43;
+    --sq-last: #c9a24a;
+    --target: rgba(47, 111, 79, 0.85);
+    --red: #c4352b;
+    --red-edge: #8a1f18;
+    --black: #2a2a2a;
+    --black-edge: #000000;
+    --danger: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171614;
+      --panel: #22201d;
+      --text: #ece8e1;
+      --muted: #a39d93;
+      --border: #3a3631;
+      --accent: #58a37c;
+      --accent-text: #0f1a14;
+      --sq-light: #d8c39c;
+      --sq-dark: #7a5233;
+      --sq-last: #b8913d;
+      --target: rgba(88, 163, 124, 0.9);
+      --black: #3a3a3a;
+      --danger: #f2827a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header { padding: 20px 16px 4px; max-width: 1100px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 1.6rem; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main {
+    max-width: 1100px; margin: 0 auto; padding: 16px;
+    display: grid; gap: 20px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @media (min-width: 900px) {
+    main { grid-template-columns: minmax(0, 600px) minmax(0, 1fr); align-items: start; }
+  }
+
+  /* Board */
+  .board-wrap { width: 100%; max-width: 600px; margin: 0 auto; }
+  #board {
+    display: grid; grid-template-columns: repeat(8, 1fr);
+    aspect-ratio: 1 / 1; width: 100%;
+    border: 6px solid var(--sq-dark); border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    user-select: none;
+  }
+  .sq { position: relative; display: flex; align-items: center; justify-content: center; }
+  .sq.light { background: var(--sq-light); }
+  .sq.dark { background: var(--sq-dark); }
+  .sq.dark.last { background: var(--sq-last); }
+  .sq.clickable { cursor: pointer; }
+  .coord {
+    position: absolute; font-size: 10px; font-weight: 600; opacity: .7;
+    color: var(--sq-light); pointer-events: none;
+  }
+  .sq.light .coord { color: var(--sq-dark); }
+  .coord.rank { top: 2px; left: 3px; }
+  .coord.file { bottom: 1px; right: 4px; }
+
+  .piece {
+    width: 78%; height: 78%; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(14px, 4.2vw, 30px); line-height: 1;
+    transition: transform .12s ease;
+  }
+  .piece.p1 { background: radial-gradient(circle at 35% 30%, #e8665b, var(--red)); border: 3px solid var(--red-edge); color: #ffe7a3; }
+  .piece.p2 { background: radial-gradient(circle at 35% 30%, #5a5a5a, var(--black)); border: 3px solid var(--black-edge); color: #ffd75e; }
+  .piece.movable { box-shadow: 0 0 0 3px rgba(255,255,255,.55); }
+  .piece.selected { transform: scale(1.08); box-shadow: 0 0 0 4px #ffe066; }
+  .target::after {
+    content: ""; width: 34%; height: 34%; border-radius: 50%;
+    background: var(--target); position: absolute;
+  }
+  .captured-mark::before {
+    content: "×"; position: absolute; color: #ffe066; font-size: clamp(16px, 5vw, 34px);
+    font-weight: 700; opacity: .8;
+  }
+
+  /* Panel */
+  aside { display: grid; gap: 14px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .card h2 { margin: 0 0 10px; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .controls { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+  label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+  select, button {
+    font: inherit; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  button { cursor: pointer; font-weight: 600; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .btn-row { grid-column: 1 / -1; display: flex; gap: 10px; }
+  .btn-row button { flex: 1; }
+
+  #status { font-size: 1.15rem; font-weight: 700; margin: 0; }
+  #message { margin: 4px 0 0; color: var(--muted); min-height: 1.5em; }
+  #message.error { color: var(--danger); }
+  .turn { display: inline-flex; align-items: center; gap: 8px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+  .dot.p1 { background: var(--red); }
+  .dot.p2 { background: var(--black); border: 1px solid #888; }
+  .counts { display: flex; gap: 18px; margin-top: 10px; font-size: .9rem; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { background: var(--bg); border-radius: 8px; padding: 6px 8px; }
+  .stat b { display: block; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: .75rem; color: var(--muted); }
+  #candidates { margin: 10px 0 0; padding: 0; list-style: none; font-size: .85rem; font-variant-numeric: tabular-nums; }
+  #candidates li { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dashed var(--border); }
+  #candidates li.best { font-weight: 700; color: var(--accent); }
+
+  #log { margin: 0; padding-left: 0; list-style: none; max-height: 220px; overflow-y: auto; font-size: .88rem; font-variant-numeric: tabular-nums; }
+  #log li { display: grid; grid-template-columns: 2.5em 1fr 1fr; gap: 6px; padding: 2px 0; }
+  .muted { color: var(--muted); }
+  details summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+  details ul { margin: 8px 0 0; padding-left: 18px; font-size: .88rem; }
+
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: none; align-items: center; justify-content: center; padding: 16px;
+  }
+  .overlay.show { display: flex; }
+  .overlay .card { max-width: 340px; width: 100%; text-align: center; }
+  .overlay h3 { margin: 0 0 6px; font-size: 1.4rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Myanmar Checkers AI</h1>
+  <p>Play against Random, Heuristic or Minimax with Alpha-Beta pruning.</p>
+</header>
+
+<main>
+  <div class="board-wrap">
+    <div id="board" aria-label="Checkers board"></div>
+  </div>
+
+  <aside>
+    <section class="card">
+      <h2>Game</h2>
+      <div class="controls">
+        <label>Difficulty
+          <select id="difficulty">
+            {% for key, label in difficulties.items() %}
+            <option value="{{ key }}" {% if key == 'hard' %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>You play
+          <select id="side">
+            <option value="1">Red (moves first)</option>
+            <option value="-1">Black</option>
+          </select>
+        </label>
+        <div class="btn-row">
+          <button id="newGame" class="primary">New game</button>
+          <button id="undo">Undo</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <p id="status" class="turn"></p>
+      <p id="message"></p>
+      <div class="counts">
+        <span><span class="dot p1"></span> Red: <b id="redCount">12</b></span>
+        <span><span class="dot p2"></span> Black: <b id="blackCount">12</b></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>AI search (last move)</h2>
+      <div class="stats">
+        <div class="stat"><b id="sAgent">—</b><span>Agent</span></div>
+        <div class="stat"><b id="sDepth">—</b><span>Depth</span></div>
+        <div class="stat"><b id="sNodes">—</b><span>Nodes</span></div>
+        <div class="stat"><b id="sPruned">—</b><span>Cutoffs</span></div>
+        <div class="stat"><b id="sTime">—</b><span>Time (s)</span></div>
+        <div class="stat"><b id="sScore">—</b><span>Best score</span></div>
+      </div>
+      <ul id="candidates"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Moves</h2>
+      <ol id="log"></ol>
+      <p id="logEmpty" class="muted" style="margin:0">No moves yet.</p>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>Rules</summary>
+        <ul>
+          <li>Men move one square diagonally forward and capture forward only.</li>
+          <li>Captures are mandatory; a piece must keep jumping while it can.</li>
+          <li>A man reaching the far row becomes a king (♛), ending the turn.</li>
+          <li>Kings fly: they move and capture any distance along a diagonal.</li>
+          <li>You lose with no pieces or no legal moves. 50 moves without a capture or man move, or a position repeated 3 times, is a draw.</li>
+        </ul>
+      </details>
+    </section>
+  </aside>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="card">
+    <h3 id="overlayTitle"></h3>
+    <p id="overlayText" class="muted"></p>
+    <div class="btn-row" style="display:flex">
+      <button id="overlayClose">View board</button>
+      <button id="overlayNew" class="primary">Play again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const FILES = "abcdefgh";
+  const NAMES = { "1": "Red", "-1": "Black" };
+  const $ = id => document.getElementById(id);
+
+  let state = null;       // last response from the server
+  let history = [];       // list of move paths
+  let human = 1;          // 1 = Red, -1 = Black
+  let difficulty = "hard";
+  let selected = [];      // partial path being built by the human
+  let busy = false;
+  let lastStats = null;
+
+  const sqName = ([r, c]) => FILES[c] + (8 - r);
+  const sameSq = (a, b) => a[0] === b[0] && a[1] === b[1];
+  const startsWith = (path, prefix) => prefix.every((sq, i) => path[i] && sameSq(path[i], sq));
+  const moveText = m => m.path.map(sqName).join(m.captured.length ? "×" : "–");
+
+  async function api(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({ error: "Server error" }));
+    if (!res.ok) throw new Error(data.error || "Request failed");
+    return data;
+  }
+
+  function setMessage(text, isError = false) {
+    $("message").textContent = text;
+    $("message").classList.toggle("error", isError);
+  }
+
+  function humanTurn() {
+    return state && !state.game_over && state.current_player === human && !busy;
+  }
+
+  // Legal moves consistent with the squares selected so far.
+  function candidates() {
+    if (!humanTurn()) return [];
+    return state.legal_moves.filter(m => startsWith(m.path, selected));
+  }
+
+  function render() {
+    const board = $("board");
+    board.innerHTML = "";
+    const cands = selected.length ? candidates() : [];
+    const targets = cands.filter(m => m.path.length > selected.length).map(m => m.path[selected.length]);
+    const movable = new Set(humanTurn() && !selected.length
+      ? state.legal_moves.map(m => m.from.join(",")) : []);
+    const last = state && state.last_move;
+    const lastSquares = new Set(last ? last.path.map(s => s.join(",")) : []);
+    const lastCaptured = new Set(last ? last.captured.map(s => s.join(",")) : []);
+    const flip = human === -1;
+
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        const r = flip ? 7 - i : i, c = flip ? 7 - j : j;
+        const key = r + "," + c;
+        const dark = (r + c) % 2 === 1;
+        const sq = document.createElement("div");
+        sq.className = "sq " + (dark ? "dark" : "light");
+        if (lastSquares.has(key)) sq.classList.add("last");
+        if (lastCaptured.has(key)) sq.classList.add("captured-mark");
+
+        if (j === 0) sq.insertAdjacentHTML("beforeend", `<span class="coord rank">${8 - r}</span>`);
+        if (i === 7) sq.insertAdjacentHTML("beforeend", `<span class="coord file">${FILES[c]}</span>`);
+
+        const p = state ? state.board[r][c] : 0;
+        if (p !== 0) {
+          const el = document.createElement("div");
+          el.className = "piece " + (p > 0 ? "p1" : "p2");
+          if (Math.abs(p) === 2) el.textContent = "♛";
+          if (movable.has(key)) { el.classList.add("movable"); sq.classList.add("clickable"); }
+          if (selected.length && sameSq(selected[selected.length - 1], [r, c])) el.classList.add("selected");
+          sq.appendChild(el);
+        }
+        if (targets.some(t => sameSq(t, [r, c]))) { sq.classList.add("target", "clickable"); }
+        sq.addEventListener("click", () => onSquare(r, c));
+        board.appendChild(sq);
+      }
+    }
+    renderPanel();
+  }
+
+  function renderPanel() {
+    if (!state) return;
+    const cp = String(state.current_player);
+    let status;
+    if (state.game_over) {
+      status = state.status;
+    } else if (busy) {
+      status = `<span class="dot ${cp === "1" ? "p1" : "p2"}"></span> AI is thinking…`;
+    } else {
+      status = `<span class="dot ${cp === "1" ? "p1" : "p2"}"></span> ` +
+        (state.current_player === human ? `Your turn (${NAMES[cp]})` : `${NAMES[cp]} to move`);
+    }
+    $("status").innerHTML = status;
+
+    const c1 = state.counts["1"], c2 = state.counts["-1"];
+    $("redCount").textContent = `${c1.men + c1.kings}` + (c1.kings ? ` (${c1.kings}♛)` : "");
+    $("blackCount").textContent = `${c2.men + c2.kings}` + (c2.kings ? ` (${c2.kings}♛)` : "");
+
+    $("undo").disabled = busy || undoTarget() < 0;
+    $("newGame").disabled = busy;
+
+    // Move log: pair moves into numbered rows (Red, Black).
+    const log = $("log");
+    log.innerHTML = "";
+    const moves = state.move_texts || [];
+    for (let i = 0; i < moves.length; i += 2) {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="muted">${i / 2 + 1}.</span><span>${moves[i]}</span><span>${moves[i + 1] || ""}</span>`;
+      log.appendChild(li);
+    }
+    $("logEmpty").style.display = moves.length ? "none" : "";
+    log.scrollTop = log.scrollHeight;
+
+    renderStats();
+  }
+
+  function renderStats() {
+    const s = lastStats || {};
+    const fmt = v => (v === undefined || v === null ? "—" : typeof v === "number" ? v.toLocaleString() : v);
+    $("sAgent").textContent = s.agent ? s.agent.split(" ")[0] : "—";
+    $("sDepth").textContent = fmt(s.depth_reached ?? (s.agent && s.agent.startsWith("Heuristic") ? 1 : undefined));
+    $("sNodes").textContent = fmt(s.nodes_evaluated);
+    $("sPruned").textContent = fmt(s.pruned);
+    $("sTime").textContent = fmt(s.time_seconds);
+    $("sScore").textContent = fmt(s.best_score);
+
+    const list = $("candidates");
+    list.innerHTML = "";
+    const scored = (s.move_scores || []).filter(x => x.score !== null && x.score !== undefined);
+    scored.sort((a, b) => b.score - a.score);
+    scored.slice(0, 6).forEach((x, i) => {
+      const li = document.createElement("li");
+      if (i === 0) li.className = "best";
+      li.innerHTML = `<span>${moveText(x.move)}</span><span>${x.score.toLocaleString()}</span>`;
+      list.appendChild(li);
+    });
+  }
+
+  function applyState(data) {
+    state = data;
+    history = data.history;
+    state.move_texts = data.moves.map(moveText);
+    selected = [];
+  }
+
+  async function onSquare(r, c) {
+    if (!humanTurn()) return;
+    const sq = [r, c];
+    const p = state.board[r][c];
+    const ownPiece = p !== 0 && Math.sign(p) === human;
+
+    if (selected.length) {
+      const next = candidates().filter(m => m.path.length > selected.length && sameSq(m.path[selected.length], sq));
+      if (next.length) {
+        selected = selected.concat([sq]);
+        const done = next.find(m => m.path.length === selected.length);
+        if (done) return submitMove(done.path);
+        setMessage("Keep jumping: choose the next landing square.");
+        return render();
+      }
+      if (selected.length > 1) {
+        setMessage("Finish the capture sequence, or click the piece again to restart.");
+        if (sameSq(selected[0], sq)) { selected = [sq]; render(); }
+        return;
+      }
+    }
+
+    if (ownPiece) {
+      if (state.legal_moves.some(m => sameSq(m.from, sq))) {
+        selected = [sq];
+        setMessage("");
+      } else {
+        selected = [];
+        const mustCapture = state.legal_moves.some(m => m.captured.length);
+        setMessage(mustCapture ? "A capture is available — you must take it." : "That piece has no legal moves.", true);
+      }
+    } else {
+      selected = [];
+    }
+    render();
+  }
+
+  async function submitMove(path) {
+    busy = true;
+    render();
+    try {
+      const data = await api("/api/move", { history, move: path });
+      busy = false;
+      applyState(data);
+      setMessage("");
+      render();
+      await maybeAiMove();
+    } catch (e) {
+      busy = false;
+      selected = [];
+      setMessage(e.message, true);
+      render();
+    }
+  }
+
+  async function maybeAiMove() {
+    if (!state || state.game_over) return showGameOver();
+    if (state.current_player === human) return;
+    busy = true;
+    render();
+    try {
+      await new Promise(r => setTimeout(r, 250));
+      const data = await api("/api/ai_move", { history, difficulty });
+      lastStats = data.ai_stats;
+      busy = false;
+      applyState(data);
+      setMessage(`AI played ${moveText(data.played)}` + (data.played.captured.length ? ` capturing ${data.played.captured.length}` : ""));
+      render();
+      if (state.game_over) showGameOver();
+    } catch (e) {
+      busy = false;
+      setMessage(e.message, true);
+      render();
+    }
+  }
+
+  function showGameOver() {
+    if (!state || !state.game_over) return;
+    const w = state.winner;
+    $("overlayTitle").textContent = w === 0 ? "Draw" : w === human ? "You win!" : "AI wins";
+    $("overlayText").textContent = `${state.status} after ${state.move_count} moves.`;
+    $("overlay").classList.add("show");
+  }
+
+  // Number of history moves to keep when undoing back to the human's previous turn.
+  function undoTarget() {
+    let k = history.length - 1;
+    const humanToMove = n => (n % 2 === 0 ? 1 : -1) === human;
+    while (k >= 0 && !humanToMove(k)) k--;
+    return k;
+  }
+
+  async function undo() {
+    const k = undoTarget();
+    if (k < 0 || busy) return;
+    try {
+      const data = await api("/api/state", { history: history.slice(0, k) });
+      applyState(data);
+      lastStats = null;
+      setMessage("Move undone.");
+      render();
+    } catch (e) {
+      setMessage(e.message, true);
+    }
+  }
+
+  async function newGame() {
+    $("overlay").classList.remove("show");
+    human = Number($("side").value);
+    difficulty = $("difficulty").value;
+    lastStats = null;
+    try {
+      const data = await api("/api/state", { history: [] });
+      applyState(data);
+      setMessage(human === 1 ? "You are Red. Click a piece to move." : "You are Black. The AI moves first.");
+      render();
+      await maybeAiMove();
+    } catch (e) {
+      setMessage(e.message, true);
+    }
+  }
+
+  $("newGame").addEventListener("click", newGame);
+  $("undo").addEventListener("click", undo);
+  $("difficulty").addEventListener("change", e => {
+    difficulty = e.target.value;
+    setMessage(`Difficulty set to ${e.target.selectedOptions[0].textContent}.`);
+  });
+  $("overlayClose").addEventListener("click", () => $("overlay").classList.remove("show"));
+  $("overlayNew").addEventListener("click", newGame);
+
+  newGame();
+})();
+</script>
+</body>
+</html>
